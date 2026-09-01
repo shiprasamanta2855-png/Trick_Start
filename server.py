@@ -5,7 +5,13 @@ import base64
 import os
 import uuid
 import time
-import winsound
+try:
+    import winsound
+except ImportError:
+    class DummyWinsound:
+        def Beep(self, freq, duration):
+            pass
+    winsound = DummyWinsound()
 import threading
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
