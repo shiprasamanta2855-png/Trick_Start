@@ -5,7 +5,7 @@ pyttsx3
 python-multipart
 onnxruntime
 transformers
-opencv-python
+opencv-python-headless
 Pillow
 torch
 torchvision
