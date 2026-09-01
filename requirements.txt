@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+chromadb
+pyttsx3
+python-multipart
+onnxruntime
+transformers
+opencv-python
+Pillow
+torch
+torchvision
+numpy
+python-dotenv
+facenet-pytorch
+tf-keras
+deepface
