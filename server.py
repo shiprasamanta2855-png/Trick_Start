@@ -18,12 +18,32 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 
-from vector_db import db
-from ml_models import face_model, env_analyzer, face_analyzer
-from tts import tts
 import database
 
 app = FastAPI(title="AI Surveillance System API")
+
+face_model = None
+env_analyzer = None
+face_analyzer = None
+tts = None
+db = None
+
+@app.on_event("startup")
+def startup_event():
+    def load_models():
+        global face_model, env_analyzer, face_analyzer, tts, db
+        print("Starting background load of ML models...")
+        from vector_db import db as vector_db
+        from ml_models import face_model as fm, env_analyzer as ea, face_analyzer as fa
+        from tts import tts as t
+        db = vector_db
+        face_model = fm
+        env_analyzer = ea
+        face_analyzer = fa
+        tts = t
+        print("ML Models loaded!")
+    threading.Thread(target=load_models, daemon=True).start()
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,6 +59,8 @@ app.mount("/captured_faces", StaticFiles(directory="captured_faces"), name="capt
 
 @app.get("/stats")
 async def get_stats():
+    if not db:
+        return database.get_stats(0)
     total_known = len(db.get_all_faces().get('ids', []))
     return database.get_stats(total_known)
 
@@ -50,6 +72,10 @@ async def get_logs():
 @app.websocket("/ws/register")
 async def register_websocket(websocket: WebSocket):
     await websocket.accept()
+    if not face_model:
+        await websocket.send_json({"status": "error", "message": "Models loading..."})
+        await websocket.close()
+        return
     embeddings = []
     identity_name = "Unknown"
     
@@ -98,12 +124,18 @@ async def register_websocket(websocket: WebSocket):
 @app.websocket("/ws/surveillance")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    if not face_model:
+        await websocket.send_json({"faces": [], "environment": "Models loading..."})
+
     frame_count = 0
     last_spoken_time = 0
     
     try:
         while True:
             data = await websocket.receive_text()
+            if not face_model:
+                await websocket.send_json({"faces": [], "environment": "Loading AI Models (~5 mins on free tier)..."})
+                continue
             if data.startswith("data:image"):
                 header, data = data.split(",", 1)
             
