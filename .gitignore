@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+captured_faces/
+surveillance.db
+.env
+*.pyc
