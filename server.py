@@ -7,6 +7,7 @@ import uuid
 import time
 import datetime
 import threading
+import asyncio
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -153,8 +154,14 @@ async def register_websocket(websocket: WebSocket):
     await websocket.accept()
     print("[WS] Client connected to /ws/register")
     
+    # Gracefully wait up to 12 seconds if models are still initializing
+    wait_count = 0
+    while (not face_model or not db) and wait_count < 24:
+        await asyncio.sleep(0.5)
+        wait_count += 1
+    
     if not face_model or not db:
-        print("[WS] Registration rejected: Core models still loading")
+        print("[WS] Registration rejected: Core models still loading after timeout")
         await websocket.send_json({
             "status": "error",
             "message": "AI models are still initializing in the cloud. Please try again in a few seconds."
@@ -278,6 +285,7 @@ async def surveillance_websocket(websocket: WebSocket):
                     "environment": "Loading AI Models in Cloud...",
                     "status": "loading"
                 })
+                await asyncio.sleep(0.5)
                 continue
                 
             if data.startswith("data:image"):

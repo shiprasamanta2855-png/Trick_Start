@@ -1,10 +1,12 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 fastapi
 uvicorn[standard]
 python-multipart
-opencv-python-headless
+opencv-python-headless>=4.8.0,<5.0.0
 Pillow
 torch
 torchvision
 numpy
 python-dotenv
 facenet-pytorch
+
