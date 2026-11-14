@@ -1,21 +1,31 @@
-import pyttsx3
 import threading
+import sys
+import os
 
 class TTSEngine:
     def __init__(self):
-        # pyttsx3 can have issues if called from multiple threads.
-        # So we create a lock to serialize speech requests.
         self.lock = threading.Lock()
-        try:
-            self.engine = pyttsx3.init()
-            self.engine.setProperty('rate', 150)
-            self.engine.setProperty('volume', 1.0)
-        except Exception as e:
-            print(f"Failed to initialize TTS: {e}")
-            self.engine = None
+        self.engine = None
+        self.enabled = False
+        
+        # Audio output is generally unavailable in headless cloud containers
+        if os.environ.get("ENABLE_TTS", "false").lower() in ("true", "1", "yes"):
+            try:
+                import pyttsx3
+                self.engine = pyttsx3.init()
+                self.engine.setProperty('rate', 150)
+                self.engine.setProperty('volume', 1.0)
+                self.enabled = True
+                print("[TTS] Text-to-speech engine initialized.")
+            except Exception as e:
+                print(f"[TTS] Audio device not found ({e}). Audio announcements disabled.")
+                self.engine = None
+                self.enabled = False
+        else:
+            print("[TTS] Audio announcements disabled in cloud mode (set ENABLE_TTS=true to enable).")
 
     def speak(self, text: str):
-        if not self.engine:
+        if not self.enabled or not self.engine:
             return
             
         def _speak():
@@ -24,13 +34,10 @@ class TTSEngine:
                     self.engine.say(text)
                     self.engine.runAndWait()
                 except Exception as e:
-                    print(f"TTS Error: {e}")
+                    print(f"[TTS] Speech warning: {e}")
 
-        # Run TTS in a daemon thread so it doesn't block the API
-        t = threading.Thread(target=_speak, daemon=True)
-        t.start()
+        threading.Thread(target=_speak, daemon=True).start()
 
-# Global TTS instance
 tts = TTSEngine()
 
 if __name__ == "__main__":
