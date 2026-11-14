@@ -306,14 +306,6 @@ async def surveillance_websocket(websocket: WebSocket):
             results = []
             current_time = time.time()
             
-            env_caption = "Active Surveillance Zone"
-            if env_analyzer and faces and (frame_count % 30 == 0):
-                try:
-                    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    env_caption = env_analyzer.analyze(Image.fromarray(rgb_frame))
-                except Exception:
-                    pass
-
             for (x, y, w, h) in faces:
                 face_crop = frame[y:y+h, x:x+w]
                 if face_crop.size == 0:
@@ -342,25 +334,6 @@ async def surveillance_websocket(websocket: WebSocket):
                 access = "GRANTED" if name != "Unknown" else "DENIED"
                 confidence = float(score) if score is not None else 0.0
 
-                # Periodic Logging (Debounced to once every 5 seconds to avoid flooding SQLite/disk)
-                if current_time - last_log_time > 5.0:
-                    last_log_time = current_time
-                    prefix = "known" if access == "GRANTED" else "unknown"
-                    image_filename = f"{prefix}_{int(current_time)}.jpg"
-                    image_path = os.path.join("captured_faces", image_filename)
-                    cv2.imwrite(image_path, face_crop)
-                    
-                    event_type = "KNOWN" if access == "GRANTED" else "UNKNOWN"
-                    log_text = f"{name} ({gender}) | {access} | {env_caption}"
-                    database.log_event(event_type, log_text, "Main Camera", confidence, f"/captured_faces/{image_filename}")
-                    
-                    # Optional Audio Alerts
-                    if tts:
-                        if access == "DENIED":
-                            tts.speak(f"Alert. Unknown individual detected.")
-                        else:
-                            tts.speak(f"Welcome {name}.")
-
                 results.append({
                     "box": [int(x), int(y), int(w), int(h)],
                     "name": name,
@@ -368,6 +341,41 @@ async def surveillance_websocket(websocket: WebSocket):
                     "access": access,
                     "gender": gender
                 })
+
+            # Real-time Dynamic Environment & Security Telemetry
+            env_caption = "Surveillance Core Active"
+            if env_analyzer:
+                try:
+                    env_caption = env_analyzer.analyze(frame, faces, results)
+                except Exception as e:
+                    print(f"[ENV] Analysis note: {e}")
+
+            # Periodic Logging (Debounced to once every 5 seconds to avoid flooding SQLite/disk)
+            if results and (current_time - last_log_time > 5.0):
+                last_log_time = current_time
+                primary = results[0]
+                p_name = primary["name"]
+                p_access = primary["access"]
+                p_gender = primary.get("gender", "Person")
+                p_conf = primary["score"]
+                prefix = "known" if p_access == "GRANTED" else "unknown"
+                image_filename = f"{prefix}_{int(current_time)}.jpg"
+                image_path = os.path.join("captured_faces", image_filename)
+                
+                if faces:
+                    x0, y0, w0, h0 = faces[0]
+                    cv2.imwrite(image_path, frame[y0:y0+h0, x0:x0+w0])
+                
+                event_type = "KNOWN" if p_access == "GRANTED" else "UNKNOWN"
+                log_text = f"{p_name} ({p_gender}) | {p_access} | {env_caption}"
+                database.log_event(event_type, log_text, "Main Camera", p_conf, f"/captured_faces/{image_filename}")
+                
+                # Optional Audio Alerts
+                if tts:
+                    if p_access == "DENIED":
+                        tts.speak("Alert. Unknown individual detected.")
+                    else:
+                        tts.speak(f"Welcome {p_name}.")
 
             await websocket.send_json({
                 "faces": results,
